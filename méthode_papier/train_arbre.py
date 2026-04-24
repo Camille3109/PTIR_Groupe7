@@ -43,13 +43,14 @@ def extract_features(df):
     if dist_totale_km == 0: return None
     
     # HCR : Heading Change Rate (Seuil 15°)
-    hcr = (df['bearing_diff'] > 15).sum() / dist_totale_km
+    hcr = (df['bearing_diff'] > 19).sum() / dist_totale_km
     
     # SR : Stop Rate (Vitesse < 0.5 m/s)
-    sr = (df['speed'] < 0.5).sum() / dist_totale_km
+    df['is_stop'] = ((df['speed'] < 3.4) & (df['speed'].shift(1) >= 3.4)).astype(int)
+    sr = df['is_stop'].sum() / dist_totale_km
     
     # VCR : Velocity Change Rate
-    vcr = (df['speed'].diff().abs() > 0.1 * df['speed'].shift()).sum() / dist_totale_km
+    vcr = (df['speed'].diff().abs() > 0.26 * df['speed'].shift()).sum() / dist_totale_km
     
     return {
         'hcr': hcr, 'sr': sr, 'vcr': vcr,

@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 from sklearn.tree import DecisionTreeClassifier
 
-final_sgm_id, hcr_km, sr, vcr, stats_vit, stats_accel = classification_points_segments.main(r"C:\Users\Camille\Documents\INSA\3A\PTIR\NetMob25CleanedData\NetMob25CleanedData\gps_dataset\2_1789.csv")
+final_sgm_id, hcr_km, sr, vcr, stats_vit, stats_accel, trip_par_segment = classification_points_segments.main(r"C:\Users\Camille\Documents\INSA\3A\PTIR\NetMob25CleanedData\NetMob25CleanedData\gps_dataset\2_1790.csv")
 
 # On crée un DataFrame où chaque ligne est un segment unique
 features_df = pd.DataFrame({
@@ -36,7 +36,14 @@ plt.show()'''
 mes_predictions = clf.predict(features_df)
 mes_probas = clf.predict_proba(features_df)
 
-print(mes_predictions, mes_probas)
+# On récupère le nom des classes (modes)
+classes = clf.classes_
+# On crée le DataFrame de résultats avec les colonnes de probabilités
+df_res = pd.DataFrame(mes_probas, columns=classes)
+# On ajoute les colonnes nécessaires pour la fonction de post-processing
+df_res['Mode'] = mes_predictions
+df_res['Confiance'] = df_res[classes].max(axis=1)
+df_res['trip_id'] = features_df.index.map(trip_par_segment)
 
 
 

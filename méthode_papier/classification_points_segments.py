@@ -33,15 +33,25 @@ def calculate_bearing(lat1, lon1, lat2, lon2):
 def main(path):
 
     df = pd.read_csv(path)
-    df['time'] = pd.to_datetime(df['UTC_TIME'], format='%H:%M:%S')
+    df['time'] = pd.to_datetime(df['LOCAL_DATE']+' '+df['UTC_TIME'], format='%Y-%m-%d %H:%M:%S')
     df = df.sort_values(by='time')
     df['time_diff'] = df['time'].diff().dt.total_seconds()
+
+    # découper en trajets (gap > 20 min = nouveau trajet)
+    df['trip_id'] = (df['time_diff'] > 1200).cumsum()
+    # les accélérations/distances ne sont pas calculées entre la fin d'un trajet et le début du suivant
+    df.loc[df['time_diff'] > 1200, 'time_diff'] = np.nan
+
     df['speed_diff'] = df['SPEED'].diff()
     df['acceleration'] = df['speed_diff'] / df['time_diff']
 
     Vt = 1.4 # Vitesse max marche
     At = 0.5 # Accélération max marche
     df['is_walk'] = ((df['SPEED'] < Vt) & (df['acceleration'] < At)).astype(int)
+
+    # forcer un changement de segment à chaque nouveau trajet
+    df.loc[df['time_diff'].isna(), 'is_walk'] = -1  # valeur impossible = change_point garanti
+
     df['change_point'] = df['is_walk'].diff().fillna(0).abs()
 
     # On crée un ID unique pour chaque segment
@@ -64,9 +74,18 @@ def main(path):
     distance_totale_segment = df.groupby('segment_id')['distance_m'].sum()
 
     # segments certains
-    df['is_certain'] = df['segment_id'].map(distance_totale_segment > 10)
-    # On crée un nouveau segment_id qui fusionne les incertains
-    df['final_segment_id'] = (df['is_certain'] != df['is_certain'].shift()).cumsum() # pour cela on compare les états (certain ou non) entre deux lignes p
+    df['is_certain'] = df['segment_id'].map(distance_totale_segment > 30)
+    
+    # Propager le segment_id du voisin certain vers l'arrière
+    df['final_segment_id'] = df['segment_id']
+
+    # Pour chaque segment incertain, lui donner l'id du dernier segment certain
+    last_certain_id = None
+    for idx in df.index:
+        if df.loc[idx, 'is_certain']:
+            last_certain_id = df.loc[idx, 'segment_id']
+        elif last_certain_id is not None:
+            df.loc[idx, 'final_segment_id'] = last_certain_id
 
     distance_totale_final_segment = df.groupby('final_segment_id')['distance_m'].sum()
 
@@ -112,7 +131,7 @@ def main(path):
     Vr = 0.26
     df['is_Vc'] = (df['v_ratio'] > Vr).astype(int)
 
-    nb_vr = df.groupby('final_segment_id')['is_PS'].sum()
+    nb_vr = df.groupby('final_segment_id')['is_Vc'].sum()
 
     # VCR par kilomètre pour chaque segment (velocity change rate)
     vcr = (nb_vr/distance_totale_final_segment)*1000
@@ -123,4 +142,6 @@ def main(path):
     # Accélération max par segment
     stats_accel = df.groupby('final_segment_id')['acceleration'].max()
 
-    return df['final_segment_id'], hcr_km, sr, vcr, stats_vitesse, stats_accel
+    trip_par_segment = df.groupby('final_segment_id')['trip_id'].first()
+
+    return df['final_segment_id'], hcr_km, sr, vcr, stats_vitesse, stats_accel, trip_par_segment
