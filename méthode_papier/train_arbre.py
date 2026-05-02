@@ -42,15 +42,15 @@ def extract_features(df):
     dist_totale_km = df['dist'].sum() / 1000
     if dist_totale_km == 0: return None
     
-    # HCR : Heading Change Rate (Seuil 15°)
-    hcr = (df['bearing_diff'] > 19).sum() / dist_totale_km
+    # HCR : Heading Change Rate 
+    hcr = (df['bearing_diff'] > 60).sum() / dist_totale_km
     
     # SR : Stop Rate (Vitesse < 0.5 m/s)
-    df['is_stop'] = ((df['speed'] < 3.4) & (df['speed'].shift(1) >= 3.4)).astype(int)
+    df['is_stop'] = ((df['speed'] < 0.5) & (df['speed'].shift(1) >= 0.5)).astype(int)
     sr = df['is_stop'].sum() / dist_totale_km
     
     # VCR : Velocity Change Rate
-    vcr = (df['speed'].diff().abs() > 0.26 * df['speed'].shift()).sum() / dist_totale_km
+    vcr = (df['speed'].diff().abs() > 0.5 * df['speed'].shift()).sum() / dist_totale_km
     
     return {
         'hcr': hcr, 'sr': sr, 'vcr': vcr,
@@ -86,7 +86,7 @@ for user_id in utilisateurs:
         all_points = []
         
         # On ne lit que les 20 premiers fichiers .plt pour aller vite
-        plt_files = [f for f in os.listdir(traj_dir) if f.endswith('.plt')][:20] 
+        plt_files = [f for f in os.listdir(traj_dir) if f.endswith('.plt')][:100] 
         
         for plt_file in plt_files:
             plt_path = os.path.join(traj_dir, plt_file)
