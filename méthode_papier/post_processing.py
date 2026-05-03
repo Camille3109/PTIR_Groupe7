@@ -26,7 +26,8 @@ MODE_NORMALISATION = {
     'tramway':  'TRAMWAY',
     'metro':    'SUBWAY',
     'train_express' : 'TRAIN',
-    'two_wheeler' : 'CAR'
+    'two_wheeler' : 'CAR',
+    'nan' : None
 }
 
 def normaliser_mode(mode):
@@ -86,9 +87,6 @@ def fusion_segments(modes_list):
             modes[i] = modes[i-1]
     return modes
 
-# ─────────────────────────────────────────────
-# 2. HELPER : résumé de séquence de modes
-# ─────────────────────────────────────────────
 
 def sequence_modes(modes_series):
     """Retourne la séquence compacte des modes (sans doublons consécutifs)."""
@@ -148,10 +146,6 @@ def generer_resume_declares(df_res, df_trips):
     return pd.DataFrame(rows)
 
 
-# ─────────────────────────────────────────────
-# 4. RÉSUMÉ DES TRAJETS EXTRA (hors CSV)
-# ─────────────────────────────────────────────
-
 def generer_resume_extra(df_res):
     df_extra = df_res[df_res['is_extra']]
     rows = []
@@ -166,9 +160,6 @@ def generer_resume_extra(df_res):
     return pd.DataFrame(rows)
 
 
-# ─────────────────────────────────────────────
-# 5. COMPARAISON PRÉDITS vs RÉELS
-# ─────────────────────────────────────────────
 
 def comparer_predictions(df_resume):
     rows = []
@@ -213,7 +204,7 @@ def lancement_user(USER_ID):
     df_train, df_res, DISPLACEMENTS_PATH = arbre(r"C:\Users\Camille\Documents\INSA\3A\PTIR\NetMob25CleanedData\NetMob25CleanedData\gps_dataset"+ f"\{USER_ID}.csv")
     transition_matrix = matrice_transition(df_train)
     df_res['Mode_Graph'] = graphe_post_processing(df_res, transition_matrix)
-    df_res['Mode_Final']  = fusion_segments(df_res['Mode_Graph'])
+    #df_res['Mode_Final']  = fusion_segments(df_res['Mode_Graph'])
     df_res['Mode_Final'] = df_res.groupby('trip_id', group_keys=False).apply(process_trip, include_groups=False)
 
     # 3. Normalisation

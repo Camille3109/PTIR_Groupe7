@@ -102,7 +102,7 @@ def segmenter_walk(df):
     df['distance_m'] = df['distance_m'].fillna(0)
 
     dist_seg = df.groupby('segment_id')['distance_m'].sum()
-    df['is_certain'] = df['segment_id'].map(dist_seg > 50)
+    df['is_certain'] = df['segment_id'].map(dist_seg > 20)
     df['final_segment_id'] = df['segment_id']
 
     last_certain_id = None
@@ -349,7 +349,7 @@ def main(gps_path, displacements_path, user_id=None):
         grp['final_segment_id'] = grp['final_segment_id'].apply(
             lambda x: f'{extra_id}_{x}')
 
-        grp = filtrer_segments_courts(grp, seuil_dist=50) # On monte à 50m pour être plus agressif
+        grp = filtrer_segments_courts(grp, seuil_dist=25)
 
         if grp.empty:
             continue
