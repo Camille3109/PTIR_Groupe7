@@ -32,7 +32,7 @@ def generate_netmob_train():
         try:
             # On appelle ton main qui gère la segmentation et l'extraction[cite: 8]
             # Assure-toi que ton main retourne bien les IDs de trajets associés aux segments
-            _, hcr, sr, vcr, vmax, amax, trip_ids = classification_points_segments.main(gps_path, DISPLACEMENTS_PATH)
+            _, hcr, sr, vcr, vmax, amax, trip_ids, lat, lon, time = classification_points_segments.main(gps_path, DISPLACEMENTS_PATH)
             
             if hcr is None or hcr.empty:
                 continue

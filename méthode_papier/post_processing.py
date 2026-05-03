@@ -242,4 +242,4 @@ def lancement_user(USER_ID):
         print(f"  Rappel moyen      : {df_comparaison['Rappel (%)'].mean():.1f} %")
         print(f"  F1 moyen          : {df_comparaison['F1 (%)'].mean():.1f} %")
 
-    return df_res
+    return df_res, df_comparaison['Précision (%)'].mean()

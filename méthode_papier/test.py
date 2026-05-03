@@ -12,7 +12,7 @@ def extraire_points_changement(user_id):
     points = []
 
     try:
-        result = lancement_user(user_id)
+        result, precision = lancement_user(user_id)
 
         # Si lancement_user retourne plusieurs objets
         if isinstance(result, tuple):
@@ -45,15 +45,17 @@ def extraire_points_changement(user_id):
     except Exception as e:
         print(f"Erreur user {user_id}: {e}")
 
-    return points
+    return points, precision
 
     
 
 all_points = []
 count = 0
+precision_tot = 0
 for element in dossier.iterdir():
     user_id = Path(element.name).stem
-    points = extraire_points_changement(user_id)
+    points, precision = extraire_points_changement(user_id)
+    precision_tot += precision
     all_points.extend(points)
     count += 1
 
@@ -67,6 +69,8 @@ print(f"\nNombre total de points de changement : {len(df_points)}")
 if df_points.empty:
     print("Aucun point trouvé.")
     exit()
+
+print(f"Précision totale : {precision_tot/300} %")
 
 # Sauvegarde CSV
 df_points.to_csv("points_changement.csv", index=False)
