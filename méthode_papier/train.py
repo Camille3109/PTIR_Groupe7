@@ -6,7 +6,7 @@ import classification_points_segments # Import de ton module pour calculate_bear
 # --- CONFIGURATION ---
 GPS_FOLDER = r"C:\Users\Camille\Documents\INSA\3A\PTIR\NetMob25CleanedData\NetMob25CleanedData\gps_dataset"
 DISPLACEMENTS_PATH = r"C:\Users\Camille\Documents\INSA\3A\PTIR\NetMob25CleanedData\NetMob25CleanedData\displacements_dataset.csv"
-MAX_USERS = 50  # LIMITE : Max 50 utilisateurs
+MAX_USERS = 100  # LIMITE : Max 50 utilisateurs
 
 def generate_netmob_train():
     # 1. Charger les labels réels

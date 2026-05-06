@@ -1,61 +1,72 @@
-from post_processing import lancement_user
-from pathlib import Path
 import pandas as pd
 import numpy as np
-from pathlib import Path
 import folium 
-
 import matplotlib.pyplot as plt
-import seaborn as sns
 from matplotlib.colors import to_hex
-import matplotlib.patches as mpatches
+import json
+import os
+import pandas as pd
+from méthode_papier_split.post_processing import lancement_user
 
 
+SPLIT_DIR = r"C:\Users\Camille\Documents\INSA\3A\PTIR\Code\méthode_papier_split"
+GPS_FOLDER = r"C:\Users\Camille\Documents\INSA\3A\PTIR\NetMob25CleanedData\NetMob25CleanedData\gps_dataset"
 
-dossier = Path(r"C:\Users\Camille\Documents\INSA\3A\PTIR\NetMob25CleanedData\NetMob25CleanedData\gps_dataset")
+# 1. CHARGEMENT DU SPLIT
+with open(os.path.join(SPLIT_DIR, "train_users.json"), 'r') as f:
+    train_users = json.load(f)[:50] # On limite pour le test
+with open(os.path.join(SPLIT_DIR, "test_users.json"), 'r') as f:
+    test_users = json.load(f)[:100]
 
+def extraire_points_changement(user_id, df_res=None):
+    """
+    Extrait les points de transition entre deux modes de transport.
+    Peut prendre un df_res déjà chargé ou un user_id.
+    """
+    points = []
+    
+    # 1. Si df_res n'est pas fourni, on le génère 
+    if df_res is None:
+        try:
+            result, _ = lancement_user(user_id, None)
+            df_res = result[1] if isinstance(result, tuple) else result
+        except Exception as e:
+            print(f"Erreur lors de la récupération des données pour {user_id}: {e}")
+            return []
 
-def extraire_points_changement(user_id):
+    # 2. Vérifications de sécurité
+    if df_res is None or len(df_res) < 2:
+        return []
 
-    try:
-        result, precision = lancement_user(user_id)
+    # Nettoyage des colonnes (Gestion des types et NaN)
+    col_mode = "Mode_Final_Norm" if "Mode_Final_Norm" in df_res.columns else "Mode"
+    
+    df_res = df_res.copy()
+    df_res[col_mode] = df_res[col_mode].astype(str).replace('nan', np.nan)
+    df_res = df_res.dropna(subset=[col_mode, "LATITUDE", "LONGITUDE"])
+    df_res = df_res.reset_index(drop=True)
 
-        # Si lancement_user retourne plusieurs objets
-        if isinstance(result, tuple):
-            df_res = result[1]
-        else:
-            df_res = result
+    # 3. Détection des changements de mode
+    # On utilise le décalage (shift) de Pandas pour aller 10x plus vite qu'une boucle for
+    mode_suivant = df_res[col_mode].shift(-1)
+    
+    # Un changement est détecté si le mode actuel est différent du suivant (et pas NaN)
+    changements = df_res[(df_res[col_mode] != mode_suivant) & (mode_suivant.notna())]
 
-        if df_res is None or len(df_res) < 2:
-            return points
+    for idx, row in changements.iterrows():
+        m_before = row[col_mode]
+        m_after = mode_suivant[idx]
         
-        df_res["Mode_Final_Norm"] = df_res["Mode_Final_Norm"].replace('nan', np.nan)
-        df_res = df_res.dropna(subset=["Mode_Final_Norm"])
+        points.append({
+            "user_id": user_id,
+            "transition": f"{m_before}→{m_after}",
+            "LATITUDE": row["LATITUDE"],
+            "LONGITUDE": row["LONGITUDE"],
+            "mode_before": m_before,
+            "mode_after": m_after
+        })
 
-        required_cols = {"Mode_Final_Norm", "LATITUDE", "LONGITUDE"}
-        if not required_cols.issubset(df_res.columns):
-            print(f"Colonnes manquantes pour {user_id}: {required_cols - set(df_res.columns)}")
-            return points
-
-        df_res = df_res.reset_index(drop=True)
-
-        for i in range(1, len(df_res)):
-            mode_before = df_res.loc[i - 1, "Mode_Final_Norm"]
-            mode_after = df_res.loc[i, "Mode_Final_Norm"]
-
-            if pd.notna(mode_before) and pd.notna(mode_after):
-                if mode_before != mode_after:
-                    points.append({
-                        "user_id": user_id,
-                        "transition": f"{mode_before}→{mode_after}",
-                        "LATITUDE": df_res.loc[i, "LATITUDE"],
-                        "LONGITUDE": df_res.loc[i, "LONGITUDE"]
-                    })
-
-    except Exception as e:
-        print(f"Erreur user {user_id}: {e}")
-
-    return points, precision
+    return points
 
 
 def generer_palette_transitions(df_points):
@@ -71,31 +82,55 @@ def generer_palette_transitions(df_points):
     
     return couleur_map
 
-    
-NOMBRE_UTILISATEURS = 50
-all_points = []
-count = 0
-precision_tot = 0
-for element in dossier.iterdir():
-    user_id = Path(element.name).stem
-    points, precision = extraire_points_changement(user_id)
-    precision_tot += precision
-    all_points.extend(points)
-    count += 1
+'''
+# --- PHASE 1 : APPRENTISSAGE SPATIAL (Sur Train uniquement) ---
+all_train_points = []
 
-    if count >= NOMBRE_UTILISATEURS:
-        break
-df_points = pd.DataFrame(all_points)
+for user_id in train_users:
+    try:
+        # On lance l'arbre SANS correction spatiale pour voir où il se trompe/change
+        df_res, _ = lancement_user(user_id, spatial_knowledge=None)
+        points = extraire_points_changement(user_id, df_res=df_res)
+        all_train_points.extend(points)
+        print(f"  [Train] {user_id} : {len(points)} points trouvés")
+    except Exception as e:
+        continue
+
+df_points_train = pd.DataFrame(all_train_points)
+spatial_knowledge = build_spatial_knowledge(df_points_train)'''
+
+# --- PHASE 2 : ÉVALUATION (Sur Test uniquement) ---
+resultats_test = []
+toutes_les_precisions = []
+all_test_points = []
+for user_id in test_users:
+    try:
+        # On applique ici le savoir spatial acquis sur le groupe Train, pour cela spatial_knowledge = spatial_knowledge
+        df_res_final, precision_finale = lancement_user(user_id, spatial_knowledge=None) 
+        toutes_les_precisions.append(precision_finale)
+        resultats_test.append({
+            'user_id': user_id,
+            'precision': precision_finale
+        })
+        points = extraire_points_changement(user_id, df_res=df_res_final)
+        all_test_points.extend(points)
+    except Exception as e:
+        print(f"  [Test] {user_id} : Erreur {e}")
 
 
+# --- SYNTHÈSE FINALE ---
+df_res = pd.DataFrame(resultats_test)
+df_points = pd.DataFrame(all_test_points)
+moyenne_globale = df_res['precision'].mean()
 
-print(f"\nNombre total de points de changement : {len(df_points)}")
-
-if df_points.empty:
-    print("Aucun point trouvé.")
-    exit()
-
-print(f"Précision totale : {precision_tot/NOMBRE_UTILISATEURS} %")
+print("\n" + "="*40)
+print(f"RÉSULTATS FINAUX SUR LE TEST SET")
+print(f"Nombre d'utilisateurs testés : {len(df_res)}")
+if len(toutes_les_precisions) > 0:
+    moyenne = sum(toutes_les_precisions) / len(toutes_les_precisions)
+    print(f"Précision totale : {moyenne:.2f} %")
+else:
+    print("Aucun résultat à calculer.")
 
 # Sauvegarde CSV
 df_points.to_csv("points_changement.csv", index=False)

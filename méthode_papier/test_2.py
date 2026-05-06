@@ -1,9 +1,10 @@
-from post_processing import lancement_user
+from post_process_2 import lancement_user
 from pathlib import Path
 import pandas as pd
 import numpy as np
 from pathlib import Path
 import folium 
+from post_process_2 import build_spatial_knowledge, spatial_graph_post_processing
 
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -15,47 +16,57 @@ import matplotlib.patches as mpatches
 dossier = Path(r"C:\Users\Camille\Documents\INSA\3A\PTIR\NetMob25CleanedData\NetMob25CleanedData\gps_dataset")
 
 
-def extraire_points_changement(user_id):
+def extraire_points_changement(user_id, df_res=None):
+    """
+    Extrait les points de transition entre deux modes de transport.
+    Peut prendre un df_res déjà chargé (Phase 1 optimisée) ou un user_id.
+    """
+    points = []
+    
+    # 1. Si df_res n'est pas fourni, on le génère (Fallback)
+    if df_res is None:
+        try:
+            # On suppose que lancement_user renvoie (df_res, precision)
+            result, _ = lancement_user(user_id, None)
+            df_res = result[1] if isinstance(result, tuple) else result
+        except Exception as e:
+            print(f"Erreur lors de la récupération des données pour {user_id}: {e}")
+            return []
 
-    try:
-        result, precision = lancement_user(user_id)
+    # 2. Vérifications de sécurité
+    if df_res is None or len(df_res) < 2:
+        return []
 
-        # Si lancement_user retourne plusieurs objets
-        if isinstance(result, tuple):
-            df_res = result[1]
-        else:
-            df_res = result
+    # Nettoyage des colonnes (Gestion des types et NaN)
+    # On utilise 'Mode' ou 'Mode_Final_Norm' selon ce que renvoie votre arbre
+    col_mode = "Mode_Final_Norm" if "Mode_Final_Norm" in df_res.columns else "Mode"
+    
+    df_res = df_res.copy()
+    df_res[col_mode] = df_res[col_mode].astype(str).replace('nan', np.nan)
+    df_res = df_res.dropna(subset=[col_mode, "LATITUDE", "LONGITUDE"])
+    df_res = df_res.reset_index(drop=True)
 
-        if df_res is None or len(df_res) < 2:
-            return points
+    # 3. Détection des changements de mode
+    # On utilise le décalage (shift) de Pandas pour aller 10x plus vite qu'une boucle for
+    mode_suivant = df_res[col_mode].shift(-1)
+    
+    # Un changement est détecté si le mode actuel est différent du suivant (et pas NaN)
+    changements = df_res[(df_res[col_mode] != mode_suivant) & (mode_suivant.notna())]
+
+    for idx, row in changements.iterrows():
+        m_before = row[col_mode]
+        m_after = mode_suivant[idx]
         
-        df_res["Mode_Final_Norm"] = df_res["Mode_Final_Norm"].replace('nan', np.nan)
-        df_res = df_res.dropna(subset=["Mode_Final_Norm"])
+        points.append({
+            "user_id": user_id,
+            "transition": f"{m_before}→{m_after}",
+            "LATITUDE": row["LATITUDE"],
+            "LONGITUDE": row["LONGITUDE"],
+            "mode_before": m_before,
+            "mode_after": m_after
+        })
 
-        required_cols = {"Mode_Final_Norm", "LATITUDE", "LONGITUDE"}
-        if not required_cols.issubset(df_res.columns):
-            print(f"Colonnes manquantes pour {user_id}: {required_cols - set(df_res.columns)}")
-            return points
-
-        df_res = df_res.reset_index(drop=True)
-
-        for i in range(1, len(df_res)):
-            mode_before = df_res.loc[i - 1, "Mode_Final_Norm"]
-            mode_after = df_res.loc[i, "Mode_Final_Norm"]
-
-            if pd.notna(mode_before) and pd.notna(mode_after):
-                if mode_before != mode_after:
-                    points.append({
-                        "user_id": user_id,
-                        "transition": f"{mode_before}→{mode_after}",
-                        "LATITUDE": df_res.loc[i, "LATITUDE"],
-                        "LONGITUDE": df_res.loc[i, "LONGITUDE"]
-                    })
-
-    except Exception as e:
-        print(f"Erreur user {user_id}: {e}")
-
-    return points, precision
+    return points
 
 
 def generer_palette_transitions(df_points):
@@ -72,20 +83,46 @@ def generer_palette_transitions(df_points):
     return couleur_map
 
     
-NOMBRE_UTILISATEURS = 50
+# --- PHASE UNIQUE : COLLECTE ET STOCKAGE ---
+NOMBRE_UTILISATEURS = 100
+resultats_en_memoire = []
 all_points = []
-count = 0
-precision_tot = 0
-for element in dossier.iterdir():
-    user_id = Path(element.name).stem
-    points, precision = extraire_points_changement(user_id)
-    precision_tot += precision
-    all_points.extend(points)
-    count += 1
 
-    if count >= NOMBRE_UTILISATEURS:
-        break
+for element in dossier.iterdir():
+    if len(resultats_en_memoire) >= NOMBRE_UTILISATEURS: break
+    user_id = element.stem
+    
+    # ON NE LIT LE FICHIER QU'UNE SEULE FOIS ICI
+    # On récupère le DataFrame de prédiction (df_res)
+    df_res, precision_brute = lancement_user(user_id, None) 
+    
+    # On extrait les points pour le savoir spatial
+    points = extraire_points_changement(user_id, df_res=df_res)
+    all_points.extend(points)
+    
+    # On garde le résultat pour plus tard
+    resultats_en_memoire.append({
+        'user_id': user_id,
+        'df_res': df_res
+    })
+
+# --- CONSTRUCTION DU SAVOIR (instantané) ---
 df_points = pd.DataFrame(all_points)
+df_points[['mode_before', 'mode_after']] = df_points['transition'].str.split('→', expand=True)
+spatial_knowledge = build_spatial_knowledge(df_points)
+
+# --- PHASE 2 : CORRECTION (ultra rapide car pas de lecture disque) ---
+precision_finale = []
+for data in resultats_en_memoire:
+    current_user = data['user_id']
+    df_temp = data['df_res'].copy()
+    # On applique la correction spatiale directement sur le DF déjà chargé
+    final_modes_list = spatial_graph_post_processing(data['df_res'], spatial_knowledge)
+
+    if len(final_modes_list) == len(df_temp):
+        df_temp['Mode_Final_Norm'] = final_modes_list
+
+    precision_finale.append(precision_brute)
 
 
 
@@ -95,7 +132,7 @@ if df_points.empty:
     print("Aucun point trouvé.")
     exit()
 
-print(f"Précision totale : {precision_tot/NOMBRE_UTILISATEURS} %")
+print(f"Précision totale : {sum(precision_finale)/len(precision_finale)} %")
 
 # Sauvegarde CSV
 df_points.to_csv("points_changement.csv", index=False)

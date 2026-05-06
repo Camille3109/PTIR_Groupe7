@@ -1,8 +1,10 @@
+
 from arbre_netmo import arbre
 import pandas as pd
 import numpy as np
 from collections import Counter
-
+from sklearn.cluster import OPTICS
+from scipy.spatial import KDTree
 
 # ─────────────────────────────────────────────
 # 0. NORMALISATION DES MODES
@@ -47,7 +49,50 @@ def matrice_transition(df_train):
         matrix.loc[labels[i], labels[i+1]] += 1
     return matrix.div(matrix.sum(axis=1), axis=0)
 
+def build_spatial_knowledge(df_points):
+    """
+    Crée une base de connaissances spatiale à partir des points de changement.
+    """
+    # On crée un KDTree pour des recherches de voisins ultra-rapides
+    coords = df_points[['LATITUDE', 'LONGITUDE']].values
+    tree = KDTree(coords)
+    
+    # On calcule les probabilités globales pour le dénominateur de la formule
+    global_prior = df_points['mode_after'].value_counts(normalize=True).to_dict()
+    
+    return {
+        'tree': tree,
+        'points': df_points,
+        'global_prior': global_prior
+    }
 
+def build_spatial_graph(all_users_segments):
+    # 1. Extraire les coordonnées des "change points" de l'entraînement
+    # On utilise OPTICS (densité) pour détecter les zones d'arrêt/transfert
+    coords = all_users_segments[['LATITUDE', 'LONGITUDE']].values
+    clustering = OPTICS(min_samples=5, xi=0.05).fit(coords)
+    
+    # 2. Créer les nœuds du graphe (les clusters)
+    # Les clusters représentent des "hubs" de transport (ex: station Châtelet)
+    all_users_segments['node_id'] = clustering.labels_
+    return all_users_segments
+
+def find_matching_edge(lat, lon, spatial_knowledge, radius=0.001):
+    """
+    Cherche si des changements de mode ont déjà eu lieu près de cette position.
+    """
+    tree = spatial_knowledge['tree']
+    # Trouve les indices des points dans un rayon donné (environ 100m)
+    idx = tree.query_ball_point([lat, lon], radius)
+    
+    if not idx:
+        return None
+    
+    # Extrait les modes observés dans cette zone
+    matching_points = spatial_knowledge['points'].iloc[idx]
+    probs = matching_points['mode_after'].value_counts(normalize=True).to_dict()
+    
+    return {'probs': probs}
 
 def graphe_post_processing(df_res, transition_matrix, T1=0.6, T2=0.36):
     final_modes = []
@@ -66,6 +111,32 @@ def graphe_post_processing(df_res, transition_matrix, T1=0.6, T2=0.36):
             final_modes.append(current_mode)
         else:
             final_modes.append(current_mode)
+    return final_modes
+
+def spatial_graph_post_processing(df_res, spatial_knowledge):
+    final_modes = []
+    global_prior = spatial_knowledge['global_prior']
+    # Liste des modes possibles (colonnes de probabilités de ton arbre)
+    modes_colonnes = [m for m in global_prior.keys() if m in df_res.columns]
+
+    for i in range(len(df_res)):
+        segment = df_res.iloc[i]
+        edge_info = find_matching_edge(segment['LATITUDE'], segment['LONGITUDE'], spatial_knowledge)
+        
+        if edge_info:
+            new_probas = {}
+            for mode in modes_colonnes:
+                p_x = segment[mode]  # Proba de l'arbre
+                p_e = edge_info['probs'].get(mode, 0.01)  # Proba spatiale (0.01 pour éviter le 0)
+                p_g = global_prior[mode]
+                
+                # Formule de Bayes simplifiée
+                new_probas[mode] = (p_x * p_e) / p_g
+            
+            final_modes.append(max(new_probas, key=new_probas.get))
+        else:
+            # Si aucune info spatiale, on prend la prédiction brute de l'arbre
+            final_modes.append(segment['Mode']) 
     return final_modes
 
 def sliding_majority_vote(predictions, window_size=5):
@@ -201,11 +272,19 @@ def process_trip(group):
     modes_finaux = fusion_segments(modes_lisses)
     return pd.Series(modes_finaux, index=group.index)
 
-def lancement_user(USER_ID):
+def lancement_user(USER_ID, spatial_knowledge=None):
     # 1. Calcul de base (Graphe de transition)
     df_train, df_res, DISPLACEMENTS_PATH = arbre(r"C:\Users\Camille\Documents\INSA\3A\PTIR\NetMob25CleanedData\NetMob25CleanedData\gps_dataset"+ f"\{USER_ID}.csv")
     transition_matrix = matrice_transition(df_train)
-    df_res['Mode_Graph'] = graphe_post_processing(df_res, transition_matrix)
+
+    if spatial_knowledge is not None:
+        # Utilise le savoir spatial (Nouveauté)
+        df_res['Mode_Graph'] = spatial_graph_post_processing(df_res, spatial_knowledge)
+    else:
+        # Utilise l'ancienne matrice de transition
+        transition_matrix = matrice_transition(df_train)
+        df_res['Mode_Graph'] = graphe_post_processing(df_res, transition_matrix)
+
     #df_res['Mode_Final']  = fusion_segments(df_res['Mode_Graph'])
     df_res['Mode_Final'] = df_res.groupby('trip_id', group_keys=False).apply(process_trip, include_groups=False)
 
@@ -218,19 +297,19 @@ def lancement_user(USER_ID):
     df_resume_decl  = generer_resume_declares(df_res, df_trips)
     df_resume_extra = generer_resume_extra(df_res)
     df_comparaison  = comparer_predictions(df_resume_decl)
-    print(df_res['Mode'])
+    #print(df_res['Mode'])
 
     # Transitions
-    print("\n" + "=" * 80)
+    '''print("\n" + "=" * 80)
     print("TRAJETS EXTRA (GPS hors fenêtres CSV, coupure à 10 min)")
     print("=" * 80)
-    print(df_resume_extra.to_string(index=False))
+    print(df_resume_extra.to_string(index=False))'''
 
     if not df_comparaison.empty:
-        print("\n" + "=" * 80)
+        #print("\n" + "=" * 80)
         print("COMPARAISON PRÉDICTIONS vs MODES RÉELS")
-        print("=" * 80)
-        print(df_comparaison.to_string(index=False))
+        #print("=" * 80)
+        #print(df_comparaison.to_string(index=False))
         print(f"\n  Précision moyenne : {df_comparaison['Précision (%)'].mean():.1f} %")
         print(f"  Rappel moyen      : {df_comparaison['Rappel (%)'].mean():.1f} %")
         print(f"  F1 moyen          : {df_comparaison['F1 (%)'].mean():.1f} %")
