@@ -1,7 +1,7 @@
 import pandas as pd
 import os
 import json
-import méthode_papier_split.classification_segments_v1 as classification_segments_v1
+import  classification_segments_v1
 
 GPS_FOLDER = r"C:\Users\Camille\Documents\INSA\3A\PTIR\NetMob25CleanedData\NetMob25CleanedData\gps_dataset"
 DISPLACEMENTS_PATH = r"C:\Users\Camille\Documents\INSA\3A\PTIR\NetMob25CleanedData\NetMob25CleanedData\displacements_dataset.csv"

@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 from sklearn.ensemble import RandomForestClassifier
-import méthode_papier_split.classification_segments_v2 as classification_segments_v2
+import  classification_segments_v2
 
 # --- CONFIGURATION GLOBALE ---
 TRAIN_DATA_PATH = r"C:\Users\Camille\Documents\INSA\3A\PTIR\Code\méthode_papier_split\netmob_train.csv"

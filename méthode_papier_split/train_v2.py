@@ -1,7 +1,7 @@
 import pandas as pd
 import os
 import json
-import méthode_papier_split.classification_segments_v2 as classification_segments_v2
+import classification_segments_v2
 
 # ─────────────────────────────────────────────
 # CONFIGURATION (À ADAPTER À TES CHEMINS)

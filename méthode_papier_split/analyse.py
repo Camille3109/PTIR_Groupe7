@@ -6,7 +6,7 @@ from matplotlib.colors import to_hex
 import json
 import os
 import pandas as pd
-from méthode_papier_split.post_processing import lancement_user
+from post_processing import lancement_user
 
 
 SPLIT_DIR = r"C:\Users\Camille\Documents\INSA\3A\PTIR\Code\méthode_papier_split"
@@ -16,7 +16,7 @@ GPS_FOLDER = r"C:\Users\Camille\Documents\INSA\3A\PTIR\NetMob25CleanedData\NetMo
 with open(os.path.join(SPLIT_DIR, "train_users.json"), 'r') as f:
     train_users = json.load(f)[:50] # On limite pour le test
 with open(os.path.join(SPLIT_DIR, "test_users.json"), 'r') as f:
-    test_users = json.load(f)[:100]
+    test_users = json.load(f)[:300]
 
 def extraire_points_changement(user_id, df_res=None):
     """
@@ -100,13 +100,14 @@ df_points_train = pd.DataFrame(all_train_points)
 spatial_knowledge = build_spatial_knowledge(df_points_train)'''
 
 # --- PHASE 2 : ÉVALUATION (Sur Test uniquement) ---
+resultats_stats = []
 resultats_test = []
 toutes_les_precisions = []
 all_test_points = []
 for user_id in test_users:
     try:
         # On applique ici le savoir spatial acquis sur le groupe Train, pour cela spatial_knowledge = spatial_knowledge
-        df_res_final, precision_finale = lancement_user(user_id, spatial_knowledge=None) 
+        df_res_final, precision_finale, infos = lancement_user(user_id, spatial_knowledge=None) 
         toutes_les_precisions.append(precision_finale)
         resultats_test.append({
             'user_id': user_id,
@@ -114,6 +115,10 @@ for user_id in test_users:
         })
         points = extraire_points_changement(user_id, df_res=df_res_final)
         all_test_points.extend(points)
+        # On stocke les infos sur chaque individu pour les stats 
+        if isinstance(infos, dict):
+            resultats_stats.append(infos)
+
     except Exception as e:
         print(f"  [Test] {user_id} : Erreur {e}")
 
@@ -121,6 +126,7 @@ for user_id in test_users:
 # --- SYNTHÈSE FINALE ---
 df_res = pd.DataFrame(resultats_test)
 df_points = pd.DataFrame(all_test_points)
+df_stats = pd.DataFrame(resultats_stats)
 moyenne_globale = df_res['precision'].mean()
 
 print("\n" + "="*40)
@@ -255,9 +261,100 @@ print(f"✓ Graphiques enregistrés : {output_file_graph}")
 plt.show()
 
 
+ # ─────────────────────────────────────────────
+# GÉNÉRATION DES 3 HISTOGRAMMES (% DURÉE PAR MODE)
+# ─────────────────────────────────────────────
+
+if not df_stats.empty and 'DUREES_MODES' in df_stats.columns:
+
+    couleurs_modes = {
+        'WALKING': '#2ecc71', # Vert
+        'CAR': '#e74c3c',     # Rouge
+        'BUS': '#3498db',     # Bleu
+        'TRAIN': '#9b59b6',   # Violet
+        'CYCLING': '#f1c40f',    # Jaune
+        'SUBWAY': '#95a5a6',  # Gris
+        'TRAMWAY': '#e67e22' # Orange
+    }
 
 
+    # Déplie le dict DUREES_MODES → une colonne par mode
+    df_durees = pd.json_normalize(df_stats['DUREES_MODES'].tolist()).fillna(0)
+    df_durees.index = df_stats.index
 
+    # Ne garder que les modes qui ont des données
+    tous_modes = [m for m in df_durees.columns if df_durees[m].sum() > 0]
+    df_durees = df_durees[tous_modes]
 
+    categories    = ['SEX', 'AGE_GROUP', 'DIPLOMA_GROUP']
+    titres_labels = ['Sexe', "Tranche d'âge", 'Diplôme']
 
+    fig, axes = plt.subplots(len(categories), 1, figsize=(14, 6 * len(categories)))
+    fig.suptitle(
+        '% de durée de déplacement par mode de transport\n(analyse sociodémographique)',
+        fontsize=16, fontweight='bold', y=1.01
+    )
 
+    for i, (cat, titre) in enumerate(zip(categories, titres_labels)):
+        ax = axes[i]
+
+        if cat not in df_stats.columns:
+            ax.set_visible(False)
+            continue
+
+        # Moyenne du % de durée par groupe socio et par mode
+        df_merged = df_durees.copy()
+        df_merged[cat] = df_stats[cat].values
+        pivot = df_merged.groupby(cat)[tous_modes].mean()  # Moyenne des % par groupe
+
+        # Couleurs dans l'ordre des colonnes
+        colors = [couleurs_modes.get(m, '#bdc3c7') for m in pivot.columns]
+
+        pivot.plot(
+            kind='bar',
+            stacked=True,           # Empilé : la somme = 100 % idéalement
+            ax=ax,
+            color=colors,
+            edgecolor='white',
+            linewidth=0.5,
+            width=0.65
+        )
+
+        ax.set_title(
+            f'Répartition modale moyenne par {titre}',
+            fontsize=13, fontweight='bold', pad=10
+        )
+        ax.set_ylabel('% moyen de durée de déplacement', fontsize=11)
+        ax.set_xlabel('')
+        ax.tick_params(axis='x', rotation=30)
+        ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda v, _: f'{v:.0f} %'))
+        ax.legend(
+            title='Mode de transport',
+            bbox_to_anchor=(1.01, 1),
+            loc='upper left',
+            fontsize=9
+        )
+        ax.grid(axis='y', alpha=0.3, linestyle='--')
+
+        # Annoter chaque segment si assez grand (> 5 %)
+        for container in ax.containers:
+            labels_annot = [
+                f'{v:.0f}%' if v >= 5 else ''
+                for v in container.datavalues
+            ]
+            ax.bar_label(container, labels=labels_annot,
+                         label_type='center', fontsize=8,
+                         color='white', fontweight='bold')
+
+    plt.tight_layout()
+    output_demo = "analyse_demographique_transport.png"
+    plt.savefig(output_demo, dpi=300, bbox_inches='tight')
+    plt.show()
+    print(f"✓ Graphiques démographiques enregistrés : {output_demo}")
+
+else:
+    if df_stats.empty:
+        print("Attention : df_stats est vide, vérifie le contenu de 'infos' dans lancement_user.")
+    else:
+        print("Attention : la colonne 'DUREES_MODES' est absente de df_stats.")
+        print("  → Vérifie que calculer_duree_par_mode() est bien appelé dans lancement_user().")

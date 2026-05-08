@@ -1,5 +1,5 @@
 
-from méthode_papier_split.arbre_netmob_v2 import arbre
+from arbre_netmob_v2 import arbre
 import pandas as pd
 from collections import Counter
 from sklearn.cluster import OPTICS
@@ -264,6 +264,108 @@ def comparer_predictions(df_resume):
 
     return pd.DataFrame(rows)
 
+import csv
+
+def obtenir_infos_individu(chemin_fichier, id_user):
+    """
+    Recherche le sexe, l'âge et le diplôme d'un individu via son ID.
+    """
+    try:
+        with open(chemin_fichier, mode='r', encoding='utf-8') as fichier:
+            # On utilise DictReader pour accéder aux colonnes par leur nom
+            lecteur = csv.DictReader(fichier)
+            
+            for ligne in lecteur:
+                # On compare l'ID (converti en string car le CSV lit du texte)
+                if ligne['ID'] == str(id_user):
+                    return {
+                        "SEX": ligne['SEX'],
+                        "AGE_GROUP": categoriser_age(int(ligne['AGE'])),
+                        "DIPLOMA_GROUP": categoriser_diplome(ligne['DIPLOMA'])
+                    }
+        return None  # Si l'ID n'est pas dans le fichier
+        
+    except FileNotFoundError:
+        return "Erreur : Le fichier CSV est introuvable."
+    except KeyError:
+        return "Erreur : Les colonnes (ID, SEX, AGE ou DIPLOMA) sont manquantes."
+    
+def categoriser_age(age):
+    if 18 <= age <= 25:
+        return "18-25"
+    elif 25 < age <= 45:
+        return "25-45"
+    elif 45 < age <= 65:
+        return "45-65"
+    elif age > 65:
+        return "65+"
+    else:
+        return "Moins de 18"
+
+def categoriser_diplome(txt):
+    if not txt: # Si la chaîne est vide
+        return "Aucune indication"
+    
+    txt = txt.lower()
+    
+    if "5-year" in txt or "master 2" in txt or "doctorate" in txt:
+        return "BAC+5"
+    elif "3–4-year" in txt or "licence" in txt or "master 1" in txt:
+        return "LICENCE"
+    elif "baccalauréat" in txt or "secondary" in txt:
+        return "BAC"
+    elif "vocational" in txt or "cap" in txt or "bep" in txt:
+        return "CAP"
+    elif "brevet" in txt :
+        return "BREVET"
+    elif "no diploma" in txt :
+        return "SANS DIPLOME"
+    else:
+        return "Autre"
+    
+def calculer_duree_par_mode(df_res):
+    """
+    Calcule le % de durée passée dans chaque mode de transport pour un utilisateur.
+    Utilise les timestamps GPS pour calculer les durées réelles.
+    Retourne un dict {MODE: pourcentage (0-100)}.
+    """
+    df = df_res.copy()
+    
+    # Détection automatique de la colonne timestamp
+    col_time = None
+    for candidate in ['TIMESTAMP', 'timestamp', 'TIME', 'time', 'DATETIME', 'datetime', 'DATE']:
+        if candidate in df.columns:
+            col_time = candidate
+            break
+
+    col_mode = "Mode_Final_Norm" if "Mode_Final_Norm" in df.columns else "Mode"
+
+    if col_time is None or col_mode not in df.columns:
+        # Fallback : on compte les points GPS (proxy de durée)
+        counts = df[col_mode].value_counts(normalize=True) * 100
+        return counts.to_dict()
+
+    df[col_time] = pd.to_datetime(df[col_time], errors='coerce')
+    df = df.sort_values(col_time).dropna(subset=[col_time, col_mode])
+    df = df.reset_index(drop=True)
+
+    # Durée de chaque segment = écart vers le point suivant
+    df['duree_sec'] = df[col_time].diff().shift(-1).dt.total_seconds()
+
+    # On écarte les écarts aberrants (> 30 min => rupture de trajet)
+    df.loc[df['duree_sec'] > 1800, 'duree_sec'] = 0
+    df['duree_sec'] = df['duree_sec'].fillna(0).clip(lower=0)
+
+    total = df['duree_sec'].sum()
+    if total == 0:
+        # Fallback comptage de points
+        counts = df[col_mode].value_counts(normalize=True) * 100
+        return counts.to_dict()
+
+    duree_par_mode = df.groupby(col_mode)['duree_sec'].sum()
+    pourcentages = (duree_par_mode / total * 100).round(2)
+    return pourcentages.to_dict()
+
 
 # 2. LISSAGE LOCAL (On traite chaque trajet séparément pour ne pas mélanger les jours)
 def process_trip(group):
@@ -276,6 +378,10 @@ def process_trip(group):
 def lancement_user(USER_ID, spatial_knowledge=None):
     # 1. Calcul de base (Graphe de transition)
     df_train, df_res, DISPLACEMENTS_PATH = arbre(r"C:\Users\Camille\Documents\INSA\3A\PTIR\NetMob25CleanedData\NetMob25CleanedData\gps_dataset"+ f"\{USER_ID}.csv")
+    INDIVIDUALS_DATASET = r"C:\Users\Camille\Documents\INSA\3A\PTIR\NetMob25CleanedData\NetMob25CleanedData\individuals_dataset.csv"
+
+    infos = obtenir_infos_individu(INDIVIDUALS_DATASET, USER_ID)
+
     transition_matrix = matrice_transition(df_train)
 
     if spatial_knowledge is not None:
@@ -292,6 +398,20 @@ def lancement_user(USER_ID, spatial_knowledge=None):
     # 3. Normalisation
     df_res['Mode_Final_Norm'] = df_res['Mode_Final'].apply(normaliser_mode)
     df_res['is_extra'] = df_res['trip_id'].apply(lambda x: str(x).startswith('extra_'))
+
+    # ON RÉCUPÈRE LE MODE LE PLUS FRÉQUENT (la valeur modale)
+    modes_series = df_res['Mode_Final_Norm'].dropna()
+    if not modes_series.empty:
+        mode_dominant = modes_series.mode()[0]
+    else:
+        mode_dominant = "Inconnu"
+
+    if isinstance(infos, dict):
+        infos['MODE_DOMINANT'] = mode_dominant
+
+    durees_modes = calculer_duree_par_mode(df_res)
+    if isinstance(infos, dict):
+        infos['DUREES_MODES'] = durees_modes
 
     # 4. Génération des rapports
     df_trips = charger_trajets_declares(DISPLACEMENTS_PATH, USER_ID)
@@ -313,4 +433,4 @@ def lancement_user(USER_ID, spatial_knowledge=None):
         print(f"  Rappel moyen      : {df_comparaison['Rappel (%)'].mean():.1f} %")
         print(f"  F1 moyen          : {df_comparaison['F1 (%)'].mean():.1f} %")
 
-    return df_res, df_comparaison['Précision (%)'].mean()
+    return df_res, df_comparaison['Précision (%)'].mean(), infos
