@@ -10,7 +10,7 @@ import multiprocessing as mp
 
 GPS_FOLDER        = r"C:\Users\Camille\Documents\INSA\3A\PTIR\NetMob25CleanedData\NetMob25CleanedData\gps_dataset"
 DISPLACEMENTS_PATH = r"C:\Users\Camille\Documents\INSA\3A\PTIR\NetMob25CleanedData\NetMob25CleanedData\displacements_dataset.csv"
-OUTPUT_DIR        = r"C:\Users\Camille\Documents\INSA\3A\PTIR\Code\méthode_papier_split"
+OUTPUT_DIR        = r"C:\Users\Camille\Documents\INSA\3A\PTIR\Code\méthode_papier_split_parallélisé"
 N_WORKERS         = max(1, mp.cpu_count() - 1)
 
 MAPPING_MODES = {
@@ -104,7 +104,7 @@ def generate_netmob_train():
         return
 
     with open(train_file, 'r') as f:
-        train_users = set(json.load(f)[:50])
+        train_users = set(json.load(f)[:100])
 
     # 2. Liste des fichiers GPS à traiter (filtrés sur train_users)
     args_list = [

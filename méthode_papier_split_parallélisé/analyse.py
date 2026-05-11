@@ -114,7 +114,7 @@ if __name__ == "__main__":
     with open(os.path.join(SPLIT_DIR, "train_users.json"), "r") as f:
         train_users = json.load(f)[:50]
     with open(os.path.join(SPLIT_DIR, "test_users.json"), "r") as f:
-        test_users = json.load(f)[:300]
+        test_users = json.load(f)
 
     # ── PHASE 2 : ÉVALUATION PARALLÈLE ───────────────────────────────────────
     print(f"\n Lancement sur {len(test_users)} users avec {N_WORKERS} workers…\n")

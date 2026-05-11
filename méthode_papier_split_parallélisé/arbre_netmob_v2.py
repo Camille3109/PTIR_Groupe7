@@ -4,7 +4,7 @@ from sklearn.ensemble import RandomForestClassifier
 import  classification_segments_v2
 
 # --- CONFIGURATION GLOBALE ---
-TRAIN_DATA_PATH = r"C:\Users\Camille\Documents\INSA\3A\PTIR\Code\méthode_papier_split\netmob_train.csv"
+TRAIN_DATA_PATH = r"C:\Users\Camille\Documents\INSA\3A\PTIR\Code\méthode_papier_split_parallélisé\netmob_train.csv"
 DISPLACEMENTS_PATH = r"C:\Users\Camille\Documents\INSA\3A\PTIR\NetMob25CleanedData\NetMob25CleanedData\displacements_dataset.csv"
 
 def train_global_model(train_path):

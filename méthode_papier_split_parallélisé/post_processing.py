@@ -1,5 +1,5 @@
 
-from arbre_netmob_v2 import arbre
+from arbre_netmob_v1 import arbre
 import pandas as pd
 from collections import Counter
 from sklearn.cluster import OPTICS

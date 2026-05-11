@@ -218,3 +218,5 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+méthode_papier_split_parallélisé/fichiers_nettoyes

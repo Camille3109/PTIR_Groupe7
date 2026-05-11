@@ -283,9 +283,10 @@ def filtrer_segments_courts(df_segmented, seuil_dist=30):
 def main(gps_path, displacements_path, user_id=None):
 
     # ── 1. Chargement GPS ──────────────────────────────────────────────────────
+
     df = pd.read_csv(gps_path)
     df['time'] = pd.to_datetime(
-        df['LOCAL_DATE'] + ' ' + df['UTC_TIME'], format='%Y-%m-%d %H:%M:%S'
+        df['LOCAL_DATE'] + ' ' + df['LOCAL_TIME'], format='%Y-%m-%d %H:%M:%S'
     )
     df = df.sort_values('time').reset_index(drop=True)
     df['SPEED'] = df['SPEED'] / 3.6
