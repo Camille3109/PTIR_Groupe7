@@ -220,3 +220,8 @@ __marimo__/
 .streamlit/secrets.toml
 
 méthode_papier_split_parallélisé/fichiers_nettoyes
+
+points_changement_map.html
+heatmap_transitions.html
+analyse_demographique_transport.png 
+analyse_transitions.png 
