@@ -15,7 +15,7 @@ split.py
         train_v2.py  ──► netmob_train.csv  ──► arbre_netmob_v2.py ──┘
 ```
 
-> ⚠️ Les deux méthodes partagent le **même fichier** `netmob_train.csv`. Il faut donc relancer le bon script `train_vX.py` avant de changer de méthode.
+> Les deux méthodes partagent le **même fichier** `netmob_train.csv`. Il faut donc relancer le bon script `train_vX.py` avant de changer de méthode.
 
 ---
 
@@ -88,7 +88,7 @@ Paramètres du RandomForest : 150 arbres, profondeur max 10, `min_samples_leaf=5
 
 Sortie : un DataFrame `df_res` avec une ligne par segment, contenant les probabilités par mode, le mode prédit, la confiance, le `trip_id`, les coordonnées GPS, et les timestamps de début et fin du segment (`TIMESTAMP`, `TIMESTAMP_FIN`).
 
-> ⚠️ `arbre_netmob_v1` doit être utilisé avec un `netmob_train.csv` généré par `train_v1.py`, et `arbre_netmob_v2` avec un CSV généré par `train_v2.py`. Mélanger les deux provoque une erreur `not in index`.
+> `arbre_netmob_v1` doit être utilisé avec un `netmob_train.csv` généré par `train_v1.py`, et `arbre_netmob_v2` avec un CSV généré par `train_v2.py`. Mélanger les deux provoque une erreur `not in index`.
 
 ---
 
