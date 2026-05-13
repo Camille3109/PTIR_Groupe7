@@ -36,10 +36,10 @@ import pandas as pd
 # ── Constantes ────────────────────────────────────────────────────────────────
 PARIS_LAT          = 48.8566
 PARIS_LON          = 2.3522
-DEFAULT_RADIUS     = 100   # km
-DEFAULT_MERGE_DIST = 3     # m
-DEFAULT_MERGE_DT   = 3     # s
-DEFAULT_JUMP       = 130   # km/h
+DEFAULT_RADIUS     = 200   # km
+DEFAULT_MERGE_DIST = 10     # m
+DEFAULT_MERGE_DT   = 30     # s
+DEFAULT_JUMP       = 200   # km/h
 DEFAULT_SPEED      = 250   # km/h (filtre colonne brute)
 
 
@@ -208,10 +208,10 @@ def clean_gps_logs(
     ----------
     input_path    : chemin du CSV source
     output_dir    : dossier de sortie (défaut = dossier du fichier source)
-    radius_km     : rayon max autour de Paris en km          (défaut 100)
-    merge_dist_m  : seuil distance pour fusion de points      (défaut 3 m)
-    merge_dt_s    : seuil temps pour fusion de points         (défaut 3 s)
-    max_jump_kmh  : vitesse max pour détecter les sauts       (défaut 130 km/h)
+    radius_km     : rayon max autour de Paris en km          (défaut 200)
+    merge_dist_m  : seuil distance pour fusion de points      (défaut 10 m)
+    merge_dt_s    : seuil temps pour fusion de points         (défaut 30 s)
+    max_jump_kmh  : vitesse max pour détecter les sauts       (défaut 200 km/h)
     max_speed_kmh : vitesse max de la colonne SPEED brute     (défaut 250 km/h)
     output_name   : nom du fichier de sortie
 

@@ -1,8 +1,10 @@
 import pandas as pd
 import numpy as np
 import folium
+import colorsys
 import matplotlib.pyplot as plt
 from matplotlib.colors import to_hex
+from folium.plugins import HeatMap
 import json
 import os
 import multiprocessing as mp
@@ -12,7 +14,7 @@ from functools import partial
 # CONFIGURATION
 # ─────────────────────────────────────────────
 
-SPLIT_DIR = r"C:\Users\Camille\Documents\INSA\3A\PTIR\Code\méthode_papier_split"
+SPLIT_DIR = r"C:\Users\Camille\Documents\INSA\3A\PTIR\Code\méthode_papier_split_parallélisé"
 GPS_FOLDER = r"C:\Users\Camille\Documents\INSA\3A\PTIR\NetMob25CleanedData\NetMob25CleanedData\gps_dataset"
 N_WORKERS  = max(1, mp.cpu_count() - 1)  # Laisse 1 cœur libre pour l'OS
 
@@ -75,9 +77,66 @@ def process_one_user(user_id):
     try:
         # Import local : évite de charger le module dans le processus principal
         from post_processing import lancement_user
+        import arbre_netmob_v1 as arbre_mod
 
         df_res_final, precision_finale, infos = lancement_user(user_id, spatial_knowledge=None)
         points = extraire_points_changement(user_id, df_res=df_res_final)
+
+        # ── Trajets DÉCLARÉS (avec date/heure/précision par trajet) ──────────────
+        try:
+            from post_processing import charger_trajets_declares, generer_resume_declares, comparer_predictions, generer_resume_extra, sequence_modes
+            displacements_path = arbre_mod.DISPLACEMENTS_PATH
+
+            df_trips       = charger_trajets_declares(displacements_path, user_id)
+            df_resume_decl = generer_resume_declares(df_res_final, df_trips)
+            df_comparaison = comparer_predictions(df_resume_decl)
+
+            # Fusion résumé + métriques par trajet
+            if not df_comparaison.empty and not df_resume_decl.empty:
+                df_decl = df_resume_decl.merge(
+                    df_comparaison[['KEY', 'Précision (%)', 'Rappel (%)', 'F1 (%)']],
+                    on='KEY', how='left'
+                )
+            else:
+                df_decl = df_resume_decl.copy()
+            df_decl['user_id'] = user_id
+            df_decl['type']    = 'déclaré'
+            trajets_records = df_decl.to_dict(orient='records')
+        except Exception as e_trip:
+            print(f"  [WARN trajets déclarés] {user_id} : {e_trip}")
+            trajets_records = []
+
+        # ── Trajets EXTRA (GPS hors fenêtres déclarées) ───────────────────────
+        try:
+            df_extra_res = df_res_final[df_res_final['is_extra']].copy()
+
+            # Détection de la colonne timestamp
+            col_time_debut = next(
+                (c for c in ['TIMESTAMP', 'timestamp'] if c in df_extra_res.columns), None
+            )
+            col_time_fin = next(
+                (c for c in ['TIMESTAMP_FIN', 'timestamp_fin'] if c in df_extra_res.columns), None
+            )
+
+            rows_extra = []
+            for trip_id, grp in df_extra_res.groupby('trip_id', sort=False):
+                row = {
+                    'user_id':        user_id,
+                    'type':           'extra',
+                    'KEY':            trip_id,
+                    'Modes Prédits':  sequence_modes(grp['Mode_Final_Norm']),
+                    'Nb segments':    len(grp),
+                }
+                if col_time_debut and col_time_fin:
+                    grp_sorted = grp.sort_values(col_time_debut)
+                    row['Date']  = pd.to_datetime(grp_sorted[col_time_debut].iloc[0]).strftime('%Y-%m-%d')
+                    row['Début'] = pd.to_datetime(grp_sorted[col_time_debut].iloc[0]).strftime('%H:%M:%S')
+                    row['Fin']   = pd.to_datetime(grp_sorted[col_time_fin].iloc[-1]).strftime('%H:%M:%S')
+                rows_extra.append(row)
+
+            trajets_records.extend(rows_extra)
+        except Exception as e_extra:
+            print(f"  [WARN trajets extra] {user_id} : {e_extra}")
 
         return {
             "success":   True,
@@ -85,6 +144,7 @@ def process_one_user(user_id):
             "precision": precision_finale,
             "infos":     infos,
             "points":    points,
+            "trajets":   trajets_records,
         }
 
     except Exception as e:
@@ -95,13 +155,35 @@ def process_one_user(user_id):
             "precision": None,
             "infos":     None,
             "points":    [],
+            "trajets":   [],
         }
 
 
 def generer_palette_transitions(df_points):
-    transitions = df_points["transition"].unique()
-    palette     = plt.colormaps["tab20"].resampled(max(20, len(transitions)))
-    return {t: to_hex(palette(i % 20)) for i, t in enumerate(sorted(transitions))}
+    """
+    Palette basée sur les "Kelly colors" : 22 couleurs sélectionnées
+    mathématiquement pour maximiser le contraste perceptuel entre toutes
+    les teintes. Au-delà de 22 transitions, on complète avec du HSV.
+    """
+    # Kelly (1965) – ordre optimisé contraste perceptuel, sans blanc/noir
+    KELLY = [
+        "#F3C300", "#875692", "#F38400", "#A1CAF1", "#BE0032",
+        "#C2B280", "#848482", "#008856", "#E68FAC", "#0067A5",
+        "#F99379", "#604E97", "#F6A600", "#B3446C", "#DCD300",
+        "#882D17", "#8DB600", "#654522", "#E25822", "#2B3D26",
+        "#222222", "#F2F3F4",  # noir/blanc en dernier recours
+    ]
+    transitions = sorted(df_points["transition"].unique())
+    couleurs = {}
+    for i, t in enumerate(transitions):
+        if i < len(KELLY):
+            couleurs[t] = KELLY[i]
+        else:
+            # Fallback HSV si > 22 transitions
+            hue = (i - len(KELLY)) / max(1, len(transitions) - len(KELLY))
+            r, g, b = colorsys.hsv_to_rgb(hue, 0.85, 0.85)
+            couleurs[t] = to_hex((r, g, b))
+    return couleurs
 
 
 # ─────────────────────────────────────────────
@@ -123,6 +205,7 @@ if __name__ == "__main__":
     resultats_test         = []
     toutes_les_precisions  = []
     all_test_points        = []
+    all_trajets            = []   # ← trajets détaillés par user
 
     # Pool crée N_WORKERS processus ; chacun charge le modèle une seule fois.
     # imap_unordered retourne les résultats dès qu'ils sont prêts (pas d'attente
@@ -142,6 +225,7 @@ if __name__ == "__main__":
                 toutes_les_precisions.append(prec)
                 resultats_test.append({"user_id": uid, "precision": prec})
                 all_test_points.extend(result["points"])
+                all_trajets.extend(result.get("trajets", []))
 
                 if isinstance(result["infos"], dict):
                     resultats_stats.append(result["infos"])
@@ -164,7 +248,42 @@ if __name__ == "__main__":
     # Sauvegarde CSV
     df_points.to_csv("points_changement.csv", index=False)
 
-    # ── CARTE FOLIUM ──────────────────────────────────────────────────────────
+    # ── EXPORT TRAJETS DÉTAILLÉS PAR UTILISATEUR ──────────────────────────────
+    if all_trajets:
+        df_trajets_export = pd.DataFrame(all_trajets)
+
+        # Réorganisation des colonnes
+        cols_prioritaires = ['user_id', 'type', 'KEY', 'Date', 'Début', 'Fin',
+                             'Modes Prédits', 'Modes Réels', 'Nb segments',
+                             'Précision (%)', 'Rappel (%)', 'F1 (%)']
+        cols_presentes = [c for c in cols_prioritaires if c in df_trajets_export.columns]
+        cols_reste     = [c for c in df_trajets_export.columns if c not in cols_presentes]
+        df_trajets_export = df_trajets_export[cols_presentes + cols_reste]
+
+        # Ajout de la précision finale par utilisateur
+        prec_par_user = pd.DataFrame(resultats_test).set_index('user_id')['precision']
+        df_trajets_export['Précision_finale_user (%)'] = (
+            df_trajets_export['user_id'].map(prec_par_user).round(1)
+        )
+
+        # Tri : par user, puis déclarés avant extras, puis par date
+        sort_cols = ['user_id', 'type']
+        if 'Date' in df_trajets_export.columns:
+            sort_cols.append('Date')
+        if 'Début' in df_trajets_export.columns:
+            sort_cols.append('Début')
+        df_trajets_export = df_trajets_export.sort_values(sort_cols, na_position='last')
+
+        df_trajets_export.to_csv("trajets_par_utilisateur.csv", index=False, encoding='utf-8-sig')
+
+        nb_decl  = (df_trajets_export['type'] == 'déclaré').sum() if 'type' in df_trajets_export.columns else '?'
+        nb_extra = (df_trajets_export['type'] == 'extra').sum()   if 'type' in df_trajets_export.columns else '?'
+        print(f"\n Fichier enregistré : trajets_par_utilisateur.csv")
+        print(f"   {df_trajets_export['user_id'].nunique()} utilisateurs  |  {nb_decl} trajets déclarés  |  {nb_extra} trajets extra")
+    else:
+        print("\n Aucun trajet à exporter.")
+
+    # ── CARTE 1 : TRANSITIONS PAR MODE (points à taille fixe en pixels) ─────
     if not df_points.empty:
         api_key   = "d6047c3a-3cb7-4a7b-8193-98d381efc90e"
         tiles_url = (
@@ -177,14 +296,16 @@ if __name__ == "__main__":
         couleur_map = generer_palette_transitions(df_points)
 
         for _, row in df_points.iterrows():
-            popup  = f"<b>User:</b> {row['user_id']}<br><b>Transition:</b> {row['transition']}"
+            popup   = f"<b>User:</b> {row['user_id']}<br><b>Transition:</b> {row['transition']}"
             couleur = couleur_map[row["transition"]]
+            # CircleMarker : rayon exprimé en PIXELS → taille fixe indépendante du zoom.
+            # radius=6 reste visible au dézoom et ne sature pas la carte au zoom fort.
             folium.CircleMarker(
                 location=[row["LATITUDE"], row["LONGITUDE"]],
-                radius=2.5,
+                radius=1,
                 popup=popup,
                 color=couleur,
-                fill=True, fillColor=couleur, fillOpacity=0.7, weight=1,
+                fill=True, fillColor=couleur, fillOpacity=0.2, weight=1,
             ).add_to(m)
 
         legend_html = """
@@ -202,7 +323,51 @@ if __name__ == "__main__":
         legend_html += "</div>"
         m.get_root().html.add_child(folium.Element(legend_html))
         m.save("points_changement_map.html")
-        print("\n Carte enregistrée : points_changement_map.html")
+        print("\n Carte 1 enregistrée : points_changement_map.html")
+
+    # ── CARTE 2 : HEATMAP DENSITÉ (style météo) ───────────────────────────────
+    if not df_points.empty:
+        m2 = folium.Map(location=[48.8566, 2.3522], zoom_start=13,
+                        tiles=tiles_url, attr="Stadia Maps")
+
+        heat_data = df_points[["LATITUDE", "LONGITUDE"]].values.tolist()
+
+        HeatMap(
+            heat_data,
+            min_opacity=0.35,
+            max_zoom=18,
+            radius=20,      # rayon d'influence de chaque point (px)
+            blur=15,        # flou gaussien → transitions douces comme une carte météo
+            gradient={      # dégradé froid → chaud
+                0.0:  "#313695",   # bleu foncé  – très peu dense
+                0.25: "#4575b4",   # bleu
+                0.45: "#74add1",   # bleu clair
+                0.6:  "#fee090",   # jaune       – densité modérée
+                0.75: "#f46d43",   # orange
+                0.9:  "#d73027",   # rouge
+                1.0:  "#a50026",   # rouge foncé – très dense
+            },
+        ).add_to(m2)
+
+        # Légende colorbar
+        legend2_html = """
+        <div style="position:fixed;bottom:50px;right:50px;width:200px;background:white;
+                    border:2px solid grey;z-index:9999;font-size:12px;padding:12px;
+                    border-radius:5px;">
+          <b style="font-size:13px;">Densité de transitions</b><br><br>
+          <div style="background:linear-gradient(to top,
+                #313695,#4575b4,#74add1,#fee090,#f46d43,#d73027,#a50026);
+                width:20px;height:120px;display:inline-block;
+                border:1px solid #888;vertical-align:middle;"></div>
+          <div style="display:inline-block;vertical-align:middle;
+                      margin-left:8px;line-height:1.8;">
+            <span style="font-size:11px;">▲ Très dense</span><br><br><br><br><br>
+            <span style="font-size:11px;">▼ Peu dense</span>
+          </div>
+        </div>"""
+        m2.get_root().html.add_child(folium.Element(legend2_html))
+        m2.save("heatmap_transitions.html")
+        print(" Carte 2 enregistrée : heatmap_transitions.html")
 
     # ── GRAPHIQUES TRANSITIONS ────────────────────────────────────────────────
     if not df_points.empty:

@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import os
+from nettoyer import clean_gps_logs
 
 GAP_EXTRA = 600  # 10 minutes : seuil de coupure pour les trips "extra"
 
@@ -137,19 +138,20 @@ def extraire_features(df):
             g['LATITUDE'].iloc[0],
             g['LONGITUDE'].iloc[0],
             g['time'].iloc[0],
+            g['time'].iloc[-1],
         ))
 
     if not results:
-        return None, None, None, None, None, None, None, None
+        return None, None, None, None, None, None, None, None, None
 
     res = pd.DataFrame(results, columns=[
-        'seg', 'hcr', 'sr', 'vcr', 'vmax', 'amax', 'lat', 'lon', 'time'
+        'seg', 'hcr', 'sr', 'vcr', 'vmax', 'amax', 'lat', 'lon', 'time', 'time_fin'
     ]).set_index('seg')
 
     return (
         res['hcr'], res['sr'], res['vcr'],
         res['vmax'], res['amax'],
-        res['lat'], res['lon'], res['time'],
+        res['lat'], res['lon'], res['time'], res['time_fin'],
     )
 
 
@@ -284,7 +286,9 @@ def main(gps_path, displacements_path, user_id=None):
 
     # ── 1. Chargement GPS ──────────────────────────────────────────────────────
 
-    df = pd.read_csv(gps_path)
+    clean_gps_logs(gps_path)
+    path_net = fr"C:\Users\Camille\Documents\INSA\3A\PTIR\Code\méthode_papier_split_parallélisé\fichiers_nettoyes\{user_id}_nettoye.csv"
+    df = pd.read_csv(path_net)
     df['time'] = pd.to_datetime(
         df['LOCAL_DATE'] + ' ' + df['LOCAL_TIME'], format='%Y-%m-%d %H:%M:%S'
     )
@@ -341,13 +345,13 @@ def main(gps_path, displacements_path, user_id=None):
         lambda x: f'decl_{x}'
     )
 
-    hcr_d, sr_d, vcr_d, vit_d, acc_d, lat, lon, time = extraire_features(df_declared)
+    hcr_d, sr_d, vcr_d, vit_d, acc_d, lat, lon, time, time_fin = extraire_features(df_declared)
     trip_d = df_declared.groupby('final_segment_id')['trip_id'].first()
 
     # ── 7. Trajets EXTRA ───────────────────────────────────────────────────────
     all_hcr  = [hcr_d];  all_sr   = [sr_d];  all_vcr  = [vcr_d]
     all_vit  = [vit_d];  all_acc  = [acc_d];  all_trip = [trip_d]
-    all_lat  = [lat];    all_lon  = [lon];    all_time = [time]
+    all_lat  = [lat];    all_lon  = [lon];    all_time = [time]   ; all_time_f = [time_fin]
 
     for extra_id, grp in df[
         df['trip_id'].apply(lambda x: str(x).startswith('extra_'))
@@ -377,12 +381,12 @@ def main(gps_path, displacements_path, user_id=None):
         if grp.empty:
             continue
 
-        h, s, v, vi, ac, la, lo, ti = extraire_features(grp)
+        h, s, v, vi, ac, la, lo, ti, tf = extraire_features(grp)
         tr = grp.groupby('final_segment_id')['trip_id'].first()
 
         all_hcr.append(h);  all_sr.append(s);   all_vcr.append(v)
         all_vit.append(vi); all_acc.append(ac);  all_trip.append(tr)
-        all_lat.append(la); all_lon.append(lo);  all_time.append(ti)
+        all_lat.append(la); all_lon.append(lo);  all_time.append(ti)    ; all_time_f.append(tf)
 
     # ── 8. Concaténation finale ────────────────────────────────────────────────
     hcr_km           = pd.concat(all_hcr)
@@ -394,6 +398,7 @@ def main(gps_path, displacements_path, user_id=None):
     lats_series      = pd.concat(all_lat)
     lons_series      = pd.concat(all_lon)
     times_series     = pd.concat(all_time)
+    time_f_series    = pd.concat(all_time_f)
 
     seg_index = pd.RangeIndex(len(hcr_km))
 
@@ -401,5 +406,5 @@ def main(gps_path, displacements_path, user_id=None):
         seg_index, hcr_km, sr, vcr,
         stats_vitesse, stats_accel,
         trip_par_segment,
-        lats_series, lons_series, times_series,
+        lats_series, lons_series, times_series, time_f_series
     )

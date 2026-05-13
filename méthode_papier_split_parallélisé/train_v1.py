@@ -59,7 +59,7 @@ def process_one_user_train(args):
 
         _, hcr, sr, vcr, vmax, amax, v_max_abs_all, v_p99_all, v_med_all, \
             pct_rapide_all, pct_tres_rap_all, \
-            duree_all, longueur_all, trip_ids, lat, lon, time = result
+            duree_all, longueur_all, trip_ids, lat, lon, time, time_f = result
 
         if hcr is None or hcr.empty:
             return None, user_id, "Pas de features"

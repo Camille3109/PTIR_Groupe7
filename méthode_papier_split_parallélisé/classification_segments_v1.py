@@ -143,17 +143,18 @@ def extraire_features(df):
             g['LATITUDE'].iloc[0],
             g['LONGITUDE'].iloc[0],
             g['time'].iloc[0],
+            g['time'].iloc[-1],
         ))
 
     if not results:
-        return (None,) * 15
+        return (None,) * 16
 
     res = pd.DataFrame(results, columns=[
         'seg', 'hcr', 'sr', 'vcr', 'vmax', 'amax',
         'v_max_abs', 'v_p99', 'v_mediane',
         'pct_rapide', 'pct_tres_rapide',
         'duree_seg', 'longueur_seg',
-        'lat', 'lon', 'time',
+        'lat', 'lon', 'time', 'time_fin',
     ]).set_index('seg')
 
     return (
@@ -169,7 +170,7 @@ def extraire_features(df):
         res['pct_tres_rapide'],
         res['duree_seg'],
         res['longueur_seg'],
-        res['lat'], res['lon'], res['time'],
+        res['lat'], res['lon'], res['time'], res['time_fin'],
     )
 
 
@@ -345,7 +346,7 @@ def main(gps_path, displacements_path, user_id=None):
 
     hcr_d, sr_d, vcr_d, vit_d, acc_d, \
         v_max_abs_d, v_p99_d, v_med_d, pct_rap_d, pct_tres_rap_d, \
-        duree_d, longueur_d, lat, lon, time = extraire_features(df_declared)
+        duree_d, longueur_d, lat, lon, time, ti_fin = extraire_features(df_declared)
     trip_d = df_declared.groupby('final_segment_id')['trip_id'].first()
 
     # ── 7. Trajets EXTRA ───────────────────────────────────────────────────────
@@ -353,7 +354,7 @@ def main(gps_path, displacements_path, user_id=None):
     all_v_max_abs, all_v_p99, all_v_med        = [v_max_abs_d], [v_p99_d], [v_med_d]
     all_pct_rap, all_pct_tres_rap              = [pct_rap_d], [pct_tres_rap_d]
     all_duree, all_longueur                    = [duree_d], [longueur_d]
-    all_trip, all_lat, all_lon, all_time       = [trip_d], [lat], [lon], [time]
+    all_trip, all_lat, all_lon, all_time, all_ti_fin       = [trip_d], [lat], [lon], [time], [ti_fin]
 
     for extra_id, grp in df[
         df['trip_id'].apply(lambda x: str(x).startswith('extra_'))
@@ -385,7 +386,7 @@ def main(gps_path, displacements_path, user_id=None):
 
         h, s, v, vi, ac, \
             vma, vp99, vmed, pr, ptr, \
-            dur, lng, la, lo, ti = extraire_features(grp)
+            dur, lng, la, lo, ti, tf = extraire_features(grp)
         tr = grp.groupby('final_segment_id')['trip_id'].first()
 
         all_hcr.append(h);  all_sr.append(s);   all_vcr.append(v)
@@ -394,7 +395,7 @@ def main(gps_path, displacements_path, user_id=None):
         all_pct_rap.append(pr);    all_pct_tres_rap.append(ptr)
         all_duree.append(dur);     all_longueur.append(lng)
         all_trip.append(tr);       all_lat.append(la)
-        all_lon.append(lo);        all_time.append(ti)
+        all_lon.append(lo);        all_time.append(ti)   ; all_ti_fin.append(tf)
 
     # ── 8. Concaténation finale ────────────────────────────────────────────────
     hcr_km           = pd.concat(all_hcr)
@@ -413,6 +414,7 @@ def main(gps_path, displacements_path, user_id=None):
     lats_series      = pd.concat(all_lat)
     lons_series      = pd.concat(all_lon)
     times_series     = pd.concat(all_time)
+    time_f_series    = pd.concat(all_ti_fin)
 
     seg_index = pd.RangeIndex(len(hcr_km))
 
@@ -420,4 +422,4 @@ def main(gps_path, displacements_path, user_id=None):
             v_max_abs_all, v_p99_all, v_med_all,
             pct_rapide_all, pct_tres_rap_all,
             duree_all, longueur_all,
-            trip_par_segment, lats_series, lons_series, times_series)
+            trip_par_segment, lats_series, lons_series, times_series, time_f_series)

@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 from sklearn.ensemble import RandomForestClassifier
 import  classification_segments_v2
+import os
 
 # --- CONFIGURATION GLOBALE ---
 TRAIN_DATA_PATH = r"C:\Users\Camille\Documents\INSA\3A\PTIR\Code\méthode_papier_split_parallélisé\netmob_train.csv"
@@ -52,8 +53,9 @@ def arbre(gps_path):
     Utilise le modèle et le scaler déjà entraînés.
     """
     # 1. Extraction des segments et features du fichier de test
-    _, hcr_km, sr, vcr, stats_vit, stats_accel, trip_par_segment, lats, lons, _ = \
-        classification_segments_v2.main(gps_path, DISPLACEMENTS_PATH)
+    user_id = os.path.splitext(os.path.basename(gps_path))[0]
+    _, hcr_km, sr, vcr, stats_vit, stats_accel, trip_par_segment, lats, lons, time, time_f = \
+        classification_segments_v2.main(gps_path, DISPLACEMENTS_PATH, user_id)
 
     # 2. Construction du DataFrame de test
     features_df = pd.DataFrame({
@@ -63,6 +65,9 @@ def arbre(gps_path):
         'v_max':      stats_vit.values,
         'a_max':      stats_accel.values,
     }, index=hcr_km.index)
+
+    times_series = time.loc[features_df.index]
+    times_fin_series = time_f.loc[features_df.index]
 
     features_df = features_df.replace([np.inf, -np.inf], np.nan)
     
@@ -95,6 +100,9 @@ def arbre(gps_path):
     df_res['trip_id'] = trip_par_segment.values
     df_res['LATITUDE'] = lats.loc[features_df.index].values
     df_res['LONGITUDE'] = lons.loc[features_df.index].values
+    df_res['TIMESTAMP'] = times_series.loc[features_df.index].values
+    df_res['TIMESTAMP_FIN'] = times_fin_series.loc[features_df.index].values
+    
     df_train = pd.read_csv(TRAIN_DATA_PATH).dropna()
 
     return df_train, df_res, DISPLACEMENTS_PATH

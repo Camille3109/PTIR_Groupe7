@@ -3,6 +3,7 @@ import numpy as np
 import os
 import json
 import multiprocessing as mp
+import classification_segments_v2
 
 # ─────────────────────────────────────────────
 # CONFIGURATION
@@ -54,10 +55,8 @@ def process_one_user_train(args):
     user_id, gps_path = args
 
     try:
-        import classification_segments_v2
-
-        result = classification_segments_v2.main(gps_path, DISPLACEMENTS_PATH)
-        _, hcr, sr, vcr, vmax, amax, trip_ids, lat, lon, time = result
+        result = classification_segments_v2.main(gps_path, DISPLACEMENTS_PATH, user_id)
+        _, hcr, sr, vcr, vmax, amax, trip_ids, lat, lon, time, time_f = result
 
         if hcr is None or hcr.empty:
             return None, user_id, "Pas de features"

@@ -60,7 +60,7 @@ def arbre(gps_path):
     """
     user_id = os.path.splitext(os.path.basename(gps_path))[0]
     # 1. Extraction des segments et features du fichier de test
-    _, hcr_km, sr, vcr, stats_vit, stats_accel, v_max_abs_all, v_p99_all, v_med_all,pct_rapide_all, pct_tres_rap_all, duree_all, longueur_all, trip_par_segment, lats, lons, _ = \
+    _, hcr_km, sr, vcr, stats_vit, stats_accel, v_max_abs_all, v_p99_all, v_med_all,pct_rapide_all, pct_tres_rap_all, duree_all, longueur_all, trip_par_segment, lats, lons, time, time_fin = \
         classification_segments_v1.main(gps_path, DISPLACEMENTS_PATH, user_id)
 
     # 2. Construction du DataFrame de test
@@ -79,6 +79,9 @@ def arbre(gps_path):
         'longueur_all' : longueur_all.values,
     }, index=hcr_km.index)
 
+    times_series = time.loc[features_df.index]
+    times_fin_series = time_fin.loc[features_df.index]
+
     features_df = features_df.replace([np.inf, -np.inf], np.nan)
     
     # On identifie les lignes valides (sans NaN)
@@ -89,7 +92,7 @@ def arbre(gps_path):
     trip_par_segment = trip_par_segment.loc[features_df.index]
     lats = lats.loc[features_df.index]
     lons = lons.loc[features_df.index]
-
+    
     # Features def dans train_global_model
     features_df['v_over_a'] = features_df['v_max'] / (features_df['a_max'].abs() + 1e-6)
     features_df['hcr_over_vcr'] = features_df['hcr'] / (features_df['vcr'] + 1e-6)
@@ -110,6 +113,8 @@ def arbre(gps_path):
     df_res['trip_id'] = trip_par_segment.values
     df_res['LATITUDE'] = lats.loc[features_df.index].values
     df_res['LONGITUDE'] = lons.loc[features_df.index].values
+    df_res['TIMESTAMP'] = times_series.loc[features_df.index].values
+    df_res['TIMESTAMP_FIN'] = times_fin_series.loc[features_df.index].values
     df_train = pd.read_csv(TRAIN_DATA_PATH).dropna()
 
 
