@@ -7,7 +7,7 @@ GAP_EXTRA = 600  # 10 minutes : seuil de coupure pour les trips "extra"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# PRIMITIVES GÉOMÉTRIQUES  –  100 % NumPy, acceptent scalaires ET tableaux
+# PRIMITIVES GÉOMÉTRIQUES 
 # ─────────────────────────────────────────────────────────────────────────────
 
 def haversine_vec(lat1, lon1, lat2, lon2):
@@ -59,12 +59,7 @@ def _step_distances(df):
 # ─────────────────────────────────────────────────────────────────────────────
 
 def compute_hcr(df, angle_threshold=19):
-    """Head-Change Rate — structure identique à l'original (shift(-1) style).
-
-    L'original calculait n bearings via shift(-1) (dernier = NaN),
-    puis diff() → n-1 comparaisons valides.
-    Ici : n bearings sur les n points (lat[i]→lat[i+1], dernier = NaN),
-    puis np.diff() → n-1 diffs, ce qui est cohérent avec step_dist (n valeurs).
+    """Head-Change Rate 
     """
     step_dist = _step_distances(df)
     total_dist = step_dist.sum()
@@ -80,7 +75,7 @@ def compute_hcr(df, angle_threshold=19):
     lons_next = np.append(lons[1:], lons[-1])
     bearings = bearing_vec(lats, lons, lats_next, lons_next)  # longueur n
 
-    # diff() sur n bearings → n-1 différences (exactement comme l'original)
+    # diff() sur n bearings → n-1 différences 
     diff = np.abs(np.diff(bearings))
     diff = np.where(diff > 180, 360 - diff, diff)
     heading_changes = (diff > angle_threshold).astype(int)   # longueur n-1
@@ -114,8 +109,8 @@ def compute_vcr(df, v_threshold=0.26):
 
 
 def extraire_features(df):
+    "Renvoie toutes les caractéristiques/features des segments"
     df = df.copy()
-
     # Distances vectorisées une seule fois pour tout le DataFrame
     dist = haversine_vec(
         df['LATITUDE'].values[:-1], df['LONGITUDE'].values[:-1],
@@ -162,7 +157,6 @@ def extraire_features(df):
 def segmenter_walk(df):
     """
     Détecte les changements de mode par quantification de vitesse.
-    La boucle Python row-by-row est remplacée par un ffill Pandas.
     """
     df = df.copy()
 
@@ -199,7 +193,7 @@ def segmenter_walk(df):
     dist_seg = df.groupby('segment_id')['distance_m'].sum()
     df['is_certain'] = df['segment_id'].map(dist_seg > 20)
 
-    # ── Fusion des micro-segments — remplace la boucle Python row-by-row ──────
+    # ── Fusion des micro-segments — 
     # Pour les lignes "incertaines", on veut propager le dernier segment_id
     # certain connu (forward-fill uniquement sur les certains).
     certain_ids = df['segment_id'].where(df['is_certain'])   # NaN si incertain
@@ -220,10 +214,6 @@ def segmenter_walk(df):
 def detect_stay_points(df_extra, dist_threshold=50, time_threshold=600):
     """
     Détecte les points d'arrêt prolongé.
-
-    Même logique que l'original (boucle while identique, résultats identiques),
-    mais distance() est remplacée par haversine_vec() qui accepte les scalaires
-    et est ~5× plus rapide grâce à NumPy sans l'overhead de np.vectorize.
     """
     n = len(df_extra)
     if n == 0:
@@ -233,7 +223,7 @@ def detect_stay_points(df_extra, dist_threshold=50, time_threshold=600):
     lons  = df_extra['LONGITUDE'].values
     times = df_extra['time'].values
 
-    # Temps en secondes (évite les conversions timedelta répétées dans la boucle)
+    # Temps en secondes
     t0        = times[0]
     time_secs = (times - t0).astype('timedelta64[s]').astype(np.float64)
 

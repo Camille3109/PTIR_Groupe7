@@ -7,7 +7,7 @@ GAP_EXTRA = 600  # 10 minutes : seuil de coupure pour les trips "extra"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# PRIMITIVES GÉOMÉTRIQUES  –  100 % NumPy, acceptent scalaires ET tableaux
+# PRIMITIVES GÉOMÉTRIQUES  –  100 % NumPy
 # ─────────────────────────────────────────────────────────────────────────────
 
 def haversine_vec(lat1, lon1, lat2, lon2):
@@ -104,8 +104,8 @@ def compute_vcr(df, v_threshold=0.26):
 
 
 def extraire_features(df):
+    "Renvoie toutes les caractéristiques/features des segments"
     df = df.copy()
-
     # Distances vectorisées une seule fois pour tout le DataFrame
     dist = haversine_vec(
         df['LATITUDE'].values[:-1], df['LONGITUDE'].values[:-1],
@@ -181,8 +181,6 @@ def extraire_features(df):
 def segmenter_walk(df):
     """
     Segmente en sous-segments walk/non-walk.
-    La boucle Python row-by-row est remplacée par un ffill Pandas.
-    Le lissage de vitesse passe de window=3 à window=5 (comme la v2).
     """
     df = df.copy()
 
@@ -207,7 +205,7 @@ def segmenter_walk(df):
     dist_seg = df.groupby('segment_id')['distance_m'].sum()
     df['is_certain'] = df['segment_id'].map(dist_seg > 20)
 
-    # ── Fusion des micro-segments — remplace la boucle Python row-by-row ──────
+    # ── Fusion des micro-segments ──────
     certain_ids = df['segment_id'].where(df['is_certain'])   # NaN si incertain
     df['final_segment_id'] = (
         certain_ids
@@ -226,8 +224,6 @@ def segmenter_walk(df):
 def detect_stay_points(df_extra, dist_threshold=50, time_threshold=600):
     """
     Détecte les points d'arrêt prolongé.
-    Même logique que l'original, mais haversine_vec remplace distance()
-    et la conversion timedelta est précalculée hors de la boucle.
     """
     n = len(df_extra)
     if n == 0:

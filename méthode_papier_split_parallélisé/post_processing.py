@@ -4,6 +4,7 @@ import pandas as pd
 from collections import Counter
 from sklearn.cluster import OPTICS
 from scipy.spatial import KDTree
+import csv
 
 # ─────────────────────────────────────────────
 # NORMALISATION DES MODES
@@ -17,6 +18,7 @@ MODE_NORMALISATION = {
     'walk':     'WALKING',
     'bike':     'CYCLING',
     'elect_bike': 'CYCLING',
+    'elect_scooter': 'CAR',
     'bus':      'BUS',
     'subway':   'SUBWAY',
     'train':    'TRAIN',
@@ -180,7 +182,7 @@ def extraire_modes(row):
         if col in row and pd.notna(row[col]):
             valeur_brute = str(row[col]).strip()
             if valeur_brute != '' and valeur_brute.lower() != 'nan':
-                # C'EST ICI : On normalise TAXI -> CAR
+                # On normalise
                 modes_identifies.append(normaliser_mode(valeur_brute))
     
     return modes_identifies
@@ -264,7 +266,6 @@ def comparer_predictions(df_resume):
 
     return pd.DataFrame(rows)
 
-import csv
 
 def obtenir_infos_individu(chemin_fichier, id_user):
     """
@@ -371,7 +372,7 @@ def calculer_duree_par_mode(df_res):
 def process_trip(group):
     # On applique le vote glissant sur les prédictions du graphe
     modes_lisses = sliding_majority_vote(group['Mode_Graph'].tolist(), window_size=5)
-    # On applique ta fonction de fusion pour boucher les derniers trous
+    # On applique la fonction de fusion
     modes_finaux = fusion_segments(modes_lisses)
     return pd.Series(modes_finaux, index=group.index)
 

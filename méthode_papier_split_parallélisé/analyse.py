@@ -8,7 +8,6 @@ from folium.plugins import HeatMap
 import json
 import os
 import multiprocessing as mp
-from functools import partial
 
 # ─────────────────────────────────────────────
 # CONFIGURATION
@@ -18,10 +17,6 @@ SPLIT_DIR = r"C:\Users\Camille\Documents\INSA\3A\PTIR\Code\méthode_papier_split
 GPS_FOLDER = r"C:\Users\Camille\Documents\INSA\3A\PTIR\NetMob25CleanedData\NetMob25CleanedData\gps_dataset"
 N_WORKERS  = max(1, mp.cpu_count() - 1)  # Laisse 1 cœur libre pour l'OS
 
-
-# ─────────────────────────────────────────────
-# FONCTIONS UTILITAIRES (top-level → picklables)
-# ─────────────────────────────────────────────
 
 def extraire_points_changement(user_id, df_res=None):
     """Extrait les points de transition entre deux modes de transport."""
@@ -68,10 +63,9 @@ def extraire_points_changement(user_id, df_res=None):
 def process_one_user(user_id):
     """
     Traite un seul utilisateur.
-    Fonction top-level → picklable par multiprocessing sur Windows.
 
-    Chaque worker importe post_processing (et donc arbre_netmob_v2) une seule
-    fois grâce au cache de sys.modules : le modèle est entraîné 1× par worker,
+    Chaque worker importe post_processing (et donc arbre_netmob_vX) une seule
+    fois : le modèle est entraîné 1× par worker,
     puis réutilisé pour tous les users assignés à ce worker.
     """
     try:
@@ -135,6 +129,7 @@ def process_one_user(user_id):
                 rows_extra.append(row)
 
             trajets_records.extend(rows_extra)
+
         except Exception as e_extra:
             print(f"  [WARN trajets extra] {user_id} : {e_extra}")
 
@@ -186,10 +181,6 @@ def generer_palette_transitions(df_points):
     return couleurs
 
 
-# ─────────────────────────────────────────────
-# POINT D'ENTRÉE  (obligatoire sur Windows)
-# ─────────────────────────────────────────────
-
 if __name__ == "__main__":
 
     # 1. CHARGEMENT DU SPLIT
@@ -198,7 +189,7 @@ if __name__ == "__main__":
     with open(os.path.join(SPLIT_DIR, "test_users.json"), "r") as f:
         test_users = json.load(f)
 
-    # ── PHASE 2 : ÉVALUATION PARALLÈLE ───────────────────────────────────────
+    # ── ÉVALUATION PARALLÈLE ───────────────────────────────────────
     print(f"\n Lancement sur {len(test_users)} users avec {N_WORKERS} workers…\n")
 
     resultats_stats        = []
@@ -299,7 +290,6 @@ if __name__ == "__main__":
             popup   = f"<b>User:</b> {row['user_id']}<br><b>Transition:</b> {row['transition']}"
             couleur = couleur_map[row["transition"]]
             # CircleMarker : rayon exprimé en PIXELS → taille fixe indépendante du zoom.
-            # radius=6 reste visible au dézoom et ne sature pas la carte au zoom fort.
             folium.CircleMarker(
                 location=[row["LATITUDE"], row["LONGITUDE"]],
                 radius=1,
@@ -313,6 +303,7 @@ if __name__ == "__main__":
                     border:2px solid grey;z-index:9999;font-size:12px;padding:10px;
                     border-radius:5px;max-height:400px;overflow-y:auto;">
         <b style="font-size:14px;">Transitions de modes</b><br>"""
+        
         for transition in sorted(couleur_map):
             c = couleur_map[transition]
             legend_html += (

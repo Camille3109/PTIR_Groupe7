@@ -44,7 +44,7 @@ def _init_worker(df_trips_shared):
 
 
 # ─────────────────────────────────────────────
-# FONCTION WORKER  (top-level → picklable)
+# FONCTION WORKER 
 # ─────────────────────────────────────────────
 
 def process_one_user_train(args):
@@ -113,7 +113,7 @@ def generate_netmob_train():
         for uid in [uid.replace('.csv', '')]
         if uid in train_users
     ]
-    # Réécriture propre (évite le nom shadowing ci-dessus)
+    # Réécriture propre 
     all_gps = sorted(
         f.replace('.csv', '')
         for f in os.listdir(GPS_FOLDER)
@@ -127,7 +127,7 @@ def generate_netmob_train():
 
     print(f"\n Traitement de {len(args_list)} users avec {N_WORKERS} workers…\n")
 
-    # 3. Chargement de df_trips UNE SEULE FOIS dans le processus principal
+    # 3. Chargement de df_trips une seule fois dans le processus principal
     df_trips = pd.read_csv(DISPLACEMENTS_PATH)
     df_trips = df_trips[df_trips['Mode_1'].notna()].copy()
 

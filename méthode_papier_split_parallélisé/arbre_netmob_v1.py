@@ -4,12 +4,11 @@ from sklearn.ensemble import RandomForestClassifier
 import classification_segments_v1 
 import os
 
-# --- CONFIGURATION GLOBALE ---
 TRAIN_DATA_PATH = r"C:\Users\Camille\Documents\INSA\3A\PTIR\Code\méthode_papier_split_parallélisé\netmob_train.csv"
 DISPLACEMENTS_PATH = r"C:\Users\Camille\Documents\INSA\3A\PTIR\NetMob25CleanedData\NetMob25CleanedData\displacements_dataset.csv"
 
 def train_global_model(train_path):
-    """Entraîne le modèle et le scaler une seule fois."""
+    """Entraîne le modèle une seule fois."""
     df_train = pd.read_csv(train_path).dropna()
     df_train['label'] = df_train['label'].str.upper()
 
@@ -49,16 +48,17 @@ def train_global_model(train_path):
     return clf
 
 # --- INITIALISATION UNIQUE ---
-# Ces objets sont chargés en mémoire au démarrage du script
+# Chargement en mémoire au démarrage du script
 GLOBAL_CLF = train_global_model(TRAIN_DATA_PATH)
 
 
 def arbre(gps_path):
     """
     Prédit le mode de transport pour un nouveau fichier GPS.
-    Utilise le modèle et le scaler déjà entraînés.
+    Utilise le modèle déjà entraîné.
     """
     user_id = os.path.splitext(os.path.basename(gps_path))[0]
+    
     # 1. Extraction des segments et features du fichier de test
     _, hcr_km, sr, vcr, stats_vit, stats_accel, v_max_abs_all, v_p99_all, v_med_all,pct_rapide_all, pct_tres_rap_all, duree_all, longueur_all, trip_par_segment, lats, lons, time, time_fin = \
         classification_segments_v1.main(gps_path, DISPLACEMENTS_PATH, user_id)

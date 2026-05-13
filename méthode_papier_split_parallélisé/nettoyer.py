@@ -10,22 +10,6 @@ Pipeline :
 Colonnes attendues : LATITUDE, LONGITUDE, SPEED (m/s),
                      LOCAL_DATE (YYYY-MM-DD), LOCAL_TIME (HH:MM:SS)
 
-Usage rapide
-------------
-    from clean_gps_logs import clean_gps_logs
-
-    clean_gps_logs("mon_fichier.csv")
-
-    clean_gps_logs("mon_fichier.csv",
-                   output_dir  = "/chemin/voulu",
-                   radius_km   = 75,
-                   merge_dist_m= 3,
-                   merge_dt_s  = 3,
-                   max_jump_kmh= 130)
-
-Ligne de commande
------------------
-    python clean_gps_logs.py mon_fichier.csv
 """
 
 from __future__ import annotations
@@ -219,7 +203,6 @@ def clean_gps_logs(
     --------
     Chemin absolu du CSV nettoyé.
     """
-    SEP = "=" * 54
 
     # ── Chargement ────────────────────────────────────────────────────────────
     df = pd.read_csv(input_path)
